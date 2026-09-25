@@ -75,16 +75,8 @@ public struct AgentActionParser: Sendable {
           rationale: object["rationale"]?.stringValue
         ))
     case "search_tools":
-      let query =
-        object["query"]?.stringValue
-        ?? object["q"]?.stringValue
-        ?? object["capability"]?.stringValue
-        ?? object["need"]?.stringValue
-        ?? object["thought"]?.stringValue
-        ?? object["reasoning"]?.stringValue
-        ?? object["plan"]?.stringValue
-        ?? object["description"]?.stringValue
-        ?? "tools"
+      let queryKeys = ["query", "q", "capability", "need", "thought", "reasoning", "plan", "description"]
+      let query = queryKeys.lazy.compactMap { object[$0]?.stringValue }.first ?? "tools"
       var arguments: [String: JSONValue] = ["query": .string(query)]
       if let limit = object["limit"] {
         arguments["limit"] = limit

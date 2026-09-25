@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2
+
+- Simplify action-parser type inference for Swift 6.0/6.1.
+
 ## 0.1.1
 
 - Fix Task references for Swift 6.0/6.1 toolchains used by GitHub CI.
