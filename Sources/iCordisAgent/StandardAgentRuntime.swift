@@ -156,7 +156,7 @@ public actor StandardAgentRuntime {
     RuntimeProgressNotification.post(
       backend: "William Agent", detail: "Agent is planning…", progressFraction: nil)
 
-    let task = Swift.Task {
+    let task = Task {
       do {
         let summary = try await loop.run(
           session: session,
@@ -253,7 +253,7 @@ public actor StandardAgentRuntime {
       if wasCancelled {
         task.cancel()
       }
-      Swift.Task {
+      Task {
         await self.clearRunningTask(token: runToken, for: session.id)
         if wasCancelled {
           await self.runtime.cancelGeneration(sessionID: session.id)

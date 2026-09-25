@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1
+
+- Fix Task references for Swift 6.0/6.1 toolchains used by GitHub CI.
+
 ## 0.1.0
 
 - Extract the Swift plugin kernel and actual default Agent runtime from William.

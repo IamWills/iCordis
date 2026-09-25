@@ -561,7 +561,7 @@ public struct AgentLoop: Sendable {
           bridgedCall.arguments.merge(bridge.arguments) { _, value in value }
         }
       }
-      defer { if let bridge { Swift.Task { await bridge.stop() } } }
+      defer { if let bridge { Task { await bridge.stop() } } }
 
       toolCalls += 1
       let invocationID = UUID()
