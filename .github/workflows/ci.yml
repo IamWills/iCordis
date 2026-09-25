@@ -1,0 +1,17 @@
+name: Swift
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift --version
+      - run: swift test
+      - run: swift run icordis-demo
+      - name: Build iOS Simulator libraries
+        run: xcodebuild -scheme iCordisHTTP -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
