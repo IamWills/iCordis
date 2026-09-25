@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3
+
+- Add `StreamEvent.reasoningDelta` so chain-of-thought is a stream branch. The default presentation does not write it into the answer channel; mount `WilliamReasoningTranscriptPlugin` to keep `<reasoning>` transcript markers.
+- Let hosts replace transcript sentences through `AgentCopyService`. The loop default is product-neutral. Mount `WilliamTranscriptCopyPlugin` for the previous William voice.
+- Share tool-call fragment assembly through `StreamingToolCallAssembler`, used by `NativeAgentStreamReducer` and `ChatCompletionsStreamAccumulator`. Chat Completions forwards `reasoning_content` and `reasoning` as `response.reasoning_text.delta`.
+
 ## 0.1.2
 
 - Simplify action-parser type inference for Swift 6.0/6.1.

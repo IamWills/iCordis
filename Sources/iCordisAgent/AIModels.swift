@@ -252,6 +252,8 @@ public enum StreamEvent: Sendable, Hashable {
   case responseEvent(ResponseStreamEvent)
   case started(responseID: UUID, timestamp: Date)
   case textDelta(messageID: UUID, delta: String)
+  /// Chain-of-thought text. Distinct from `textDelta`, which is the answer channel.
+  case reasoningDelta(messageID: UUID, delta: String)
   case capabilityInvocationStarted(CapabilityInvocationProgress)
   case capabilityInvocation(CapabilityExecutionTrace)
   case usage(Usage)

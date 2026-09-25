@@ -169,7 +169,11 @@ public struct StandardAgentLoopPlugin: WilliamPlugin {
       RuntimeServices.toolDiscovery.id,
       RuntimeServices.toolExecution.id,
     ],
-    optionalServices: [RuntimeServices.requestShaper.id],
+    optionalServices: [
+      RuntimeServices.requestShaper.id,
+      RuntimeServices.transcriptCopy.id,
+      RuntimeServices.reasoningPresentation.id,
+    ],
     providedServices: [RuntimeServices.agentLoop.id]
   )
 

@@ -262,6 +262,10 @@ public actor AgentLLMClient {
         usage = streamedUsage
       case .textDelta(_, let delta):
         AgentLogCategory.app.debug("ignored legacy agent textDelta chars=\(delta.count)")
+      case .reasoningDelta(_, let delta):
+        let visible = AgentVisibleTextDelta(text: delta, isReasoning: true)
+        rawText += delta
+        await onVisibleTextDelta?(visible)
       case .failed(_, let description):
         AgentLogCategory.app.debug("ignored legacy agent failure chars=\(description.count)")
       default:
@@ -513,15 +517,7 @@ public actor AgentLLMClient {
 /// protocol, so this reducer only has to route them — it never has to guess
 /// which characters of a token stream belong to a control payload.
 public struct NativeAgentStreamReducer {
-  private struct PendingCall {
-    var name: String
-    var callID: String
-    var arguments = ""
-    var isComplete = false
-  }
-
-  private var pendingCalls: [String: PendingCall] = [:]
-  private var callOrder: [String] = []
+  private var toolCalls = StreamingToolCallAssembler<String>()
   /// A Responses stream has exactly one visible-text source. Once any text
   /// delta arrives, terminal snapshots are metadata only and never contribute
   /// user-visible characters. A snapshot is retained solely as a compatibility
@@ -584,14 +580,14 @@ public struct NativeAgentStreamReducer {
   }
 
   public func finishedToolCalls(catalog: AgentToolCatalog) -> [AgentInvocationRequest] {
-    callOrder.compactMap { key -> AgentInvocationRequest? in
-      guard let pending = pendingCalls[key] else { return nil }
+    toolCalls.ordered().map { item in
+      let pending = item.fragment
       let capabilityID = catalog.capabilityID(forFunctionName: pending.name) ?? pending.name
       return AgentInvocationRequest(
         callID: pending.callID,
         call: AgentToolCall(
           capabilityID: capabilityID,
-          arguments: Self.decodeArguments(pending.arguments),
+          arguments: StreamingToolCallAssembler<String>.decodeArguments(pending.arguments),
           rationale: nil
         )
       )
@@ -611,39 +607,22 @@ public struct NativeAgentStreamReducer {
     itemKey: String
   ) {
     guard let item, item.type == "function_call" else { return }
-    if pendingCalls[itemKey] == nil {
-      pendingCalls[itemKey] = PendingCall(
-        name: item.name ?? "",
-        callID: item.callID ?? item.id ?? itemKey
-      )
-      callOrder.append(itemKey)
-    } else {
-      if let name = item.name, !name.isEmpty {
-        pendingCalls[itemKey]?.name = name
-      }
-      if let callID = item.callID, !callID.isEmpty {
-        pendingCalls[itemKey]?.callID = callID
-      }
-    }
+    toolCalls.register(
+      key: itemKey,
+      name: item.name ?? "",
+      callID: item.callID ?? item.id ?? "",
+      fallbackCallID: itemKey
+    )
   }
 
   private mutating func appendArguments(_ delta: String?, itemKey: String) {
-    guard let delta, !delta.isEmpty else { return }
-    if pendingCalls[itemKey] == nil {
-      // Some gateways stream argument deltas before announcing the item.
-      pendingCalls[itemKey] = PendingCall(name: "", callID: itemKey)
-      callOrder.append(itemKey)
-    }
-    guard pendingCalls[itemKey]?.isComplete == false else { return }
-    pendingCalls[itemKey]?.arguments += delta
+    guard let delta else { return }
+    toolCalls.appendArguments(delta, key: itemKey, fallbackCallID: itemKey)
   }
 
   private mutating func completeArguments(_ arguments: String?, itemKey: String) {
-    guard let arguments, !arguments.isEmpty, pendingCalls[itemKey] != nil else { return }
-    // The terminal event carries the whole argument string; prefer it over
-    // an accumulation that may have missed a delta.
-    pendingCalls[itemKey]?.arguments = arguments
-    pendingCalls[itemKey]?.isComplete = true
+    guard let arguments else { return }
+    toolCalls.complete(arguments: arguments, key: itemKey)
   }
 
   private mutating func appendTextDelta(_ text: String?) -> [AgentVisibleTextDelta] {
@@ -671,18 +650,6 @@ public struct NativeAgentStreamReducer {
       .compactMap(\.text)
       .joined() ?? ""
     return value.isEmpty ? nil : value
-  }
-
-  private static func decodeArguments(_ raw: String) -> [String: JSONValue] {
-    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty,
-      let data = trimmed.data(using: .utf8),
-      let value = try? JSONDecoder().decode(JSONValue.self, from: data),
-      case .object(let object) = value
-    else {
-      return [:]
-    }
-    return object
   }
 
   public init() {}

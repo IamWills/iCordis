@@ -10,6 +10,14 @@ public enum StreamEventMapper {
     }
   }
 
+  public static func collectReasoning(from events: [StreamEvent]) -> String {
+    events.reduce(into: "") { partial, event in
+      if case .reasoningDelta(_, let delta) = event {
+        partial.append(delta)
+      }
+    }
+  }
+
   public static func responseEvents(from event: StreamEvent, responseID fallbackResponseID: UUID)
     -> [ResponseStreamEvent]
   {
@@ -23,6 +31,10 @@ public enum StreamEventMapper {
     case .textDelta(let messageID, let delta):
       return [
         .outputTextDelta(responseID: fallbackResponseID, messageID: messageID, delta: delta)
+      ]
+    case .reasoningDelta(let messageID, let delta):
+      return [
+        .reasoningTextDelta(responseID: fallbackResponseID, messageID: messageID, delta: delta)
       ]
     case .capabilityInvocationStarted:
       return []

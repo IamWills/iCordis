@@ -7,5 +7,6 @@ public enum AgentExecutionEvent: Sendable, Hashable {
   case capabilityInvocationStarted(CapabilityInvocationProgress)
   case capabilityInvocation(CapabilityExecutionTrace)
   case textDelta(messageID: UUID, delta: String)
+  case reasoningDelta(messageID: UUID, delta: String)
   case completed(messageID: UUID, summary: AgentRunSummary)
 }

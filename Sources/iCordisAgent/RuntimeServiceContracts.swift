@@ -55,6 +55,12 @@ public enum RuntimeServices {
   /// the in-process loop and the DSH bridge produce identical requests.
   public static let requestShaper = ServiceKey<AgentRequestShaper>(
     ServiceID("william.request-shaper"))
+  /// Host-supplied sentences written into the run transcript.
+  public static let transcriptCopy = ServiceKey<AgentCopyService>(
+    ServiceID("icordis.transcript-copy"))
+  /// Whether reasoning is a typed stream event, transcript markers, or both.
+  public static let reasoningPresentation = ServiceKey<ReasoningPresentationService>(
+    ServiceID("icordis.reasoning-presentation"))
   /// Manage Cordis/Koishi community plugins hosted by the live DSH agent
   /// (install/uninstall/enable/list). Provided only while a DSH runtime is
   /// mounted, since the plugins execute inside that agent.

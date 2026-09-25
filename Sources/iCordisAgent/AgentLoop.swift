@@ -31,6 +31,10 @@ public struct AgentLoop: Sendable {
   /// text-only, and sending them an image fails the whole request.
   public let acceptsImageInput: Bool
   public let completionGate: AgentCompletionGate
+  /// Sentences written into the transcript. Defaults to product-neutral copy.
+  public let copy: AgentCopyService
+  /// Chain-of-thought leaves as `reasoningDelta`. Transcript markers are opt-in.
+  public let reasoningPresentation: ReasoningPresentation
 
   public init(
     continuation: AgentContinuationService = .decline,
@@ -48,7 +52,9 @@ public struct AgentLoop: Sendable {
     runSettings: AppSettings = .default,
     hasRegisteredApps: Bool = false,
     acceptsImageInput: Bool = true,
-    completionGate: AgentCompletionGate = AgentCompletionGate()
+    completionGate: AgentCompletionGate = AgentCompletionGate(),
+    copy: AgentCopyService = .neutral,
+    reasoningPresentation: ReasoningPresentation = .typedEvent
   ) {
     self.continuation = continuation
     self.toolBridge = toolBridge
@@ -77,6 +83,8 @@ public struct AgentLoop: Sendable {
     self.hasRegisteredApps = hasRegisteredApps
     self.acceptsImageInput = acceptsImageInput
     self.completionGate = completionGate
+    self.copy = copy
+    self.reasoningPresentation = reasoningPresentation
   }
 
   public func run(
@@ -139,7 +147,14 @@ public struct AgentLoop: Sendable {
         mode: renderingMode,
         conversationHistory: preparedConversationHistory
       )
-      let reasoningWrapper = AgentReasoningWrapper()
+      let reasoningMarkers: (open: String, close: String)
+      if case .transcriptMarkers(let open, let close) = reasoningPresentation.style {
+        reasoningMarkers = (open, close)
+      } else {
+        reasoningMarkers = ("", "")
+      }
+      let reasoningWrapper = AgentReasoningWrapper(
+        open: reasoningMarkers.open, close: reasoningMarkers.close)
       let turn: AgentModelTurn
       do {
         turn = try await llmClient.completeTurn(
@@ -152,8 +167,18 @@ public struct AgentLoop: Sendable {
           resolutionCatalog: catalog,
           mode: renderingMode,
           onVisibleTextDelta: { delta in
-            for text in await reasoningWrapper.consume(delta) {
-              await emit(.textDelta(messageID: session.id, delta: text))
+            if delta.isReasoning {
+              await emit(.reasoningDelta(messageID: session.id, delta: delta.text))
+            }
+            switch reasoningPresentation.style {
+            case .typedEvent:
+              if delta.isReasoning == false, delta.text.isEmpty == false {
+                await emit(.textDelta(messageID: session.id, delta: delta.text))
+              }
+            case .transcriptMarkers:
+              for text in await reasoningWrapper.consume(delta) {
+                await emit(.textDelta(messageID: session.id, delta: text))
+              }
             }
           }
         )
@@ -173,10 +198,11 @@ public struct AgentLoop: Sendable {
         modelCallFailures += 1
         guard modelCallFailures < 2 else {
           return await summary(
-            answer: closingAnswer(
-              forFailure: message,
-              executedTools: executedTools,
-              trajectory: trajectory
+            answer: copy.render(
+              .providerFailure(
+                detail: message,
+                completedTools: executedTools.filter(\.succeeded).map(\.tool)
+              )
             ),
             status: .incomplete,
             unmetRequirements: [],
@@ -192,7 +218,9 @@ public struct AgentLoop: Sendable {
         await appendStep(.runtimeNote, modelOutput: "", observation: note)
         continue
       }
-      if let closing = await reasoningWrapper.finish() {
+      if case .transcriptMarkers = reasoningPresentation.style,
+        let closing = await reasoningWrapper.finish()
+      {
         await emit(.textDelta(messageID: session.id, delta: closing))
       }
 
@@ -232,7 +260,7 @@ public struct AgentLoop: Sendable {
             continue
           }
           return await summary(
-            answer: "已按你的选择停止继续生成。当前任务尚未完成；已完成的工具操作和文件改动均已保留，你可以稍后要求 William 继续。",
+            answer: copy.render(.outputLimitStopped),
             status: .incomplete,
             unmetRequirements: [],
             modelOutput: turn.rawText
@@ -997,28 +1025,6 @@ public struct AgentLoop: Sendable {
     return (try? parser.parse(rawText, allowsNaturalLanguageFinalAnswer: false)) == nil
   }
 
-  /// What to tell the user when the run ends on a provider failure rather than
-  /// on the model's own decision. Names the work that survived, so a failed
-  /// request does not read as "nothing happened".
-  private func closingAnswer(
-    forFailure message: String,
-    executedTools: [(tool: String, succeeded: Bool)],
-    trajectory: AgentTrajectory
-  ) -> String {
-    let done = executedTools.filter(\.succeeded).map(\.tool)
-    let completed =
-      done.isEmpty
-      ? "本次运行尚未完成任何工具操作。"
-      : "已完成并保留的操作：\n" + done.map { "- \($0)" }.joined(separator: "\n")
-    return """
-      与模型服务的连接连续失败，运行已停止：\(message)
-
-      \(completed)
-
-      文件改动均已保留。可以直接让 William 继续，或指出希望优先完成的部分。
-      """
-  }
-
   private func normalized(
     _ toolCall: AgentToolCall,
     runID: UUID,
@@ -1166,16 +1172,23 @@ public struct AgentLoop: Sendable {
 /// still needs — text and control payloads no longer share a channel.
 private actor AgentReasoningWrapper {
   private var isStreamingReasoning = false
+  private let open: String
+  private let close: String
+
+  init(open: String, close: String) {
+    self.open = open
+    self.close = close
+  }
 
   func consume(_ delta: AgentVisibleTextDelta) -> [String] {
     if delta.isReasoning {
       if isStreamingReasoning { return [delta.text] }
       isStreamingReasoning = true
-      return ["<reasoning>\n", delta.text]
+      return [open, delta.text]
     }
     if isStreamingReasoning {
       isStreamingReasoning = false
-      return ["\n</reasoning>\n\n", delta.text]
+      return [close + "\n\n", delta.text]
     }
     return [delta.text]
   }
@@ -1183,7 +1196,7 @@ private actor AgentReasoningWrapper {
   func finish() -> String? {
     guard isStreamingReasoning else { return nil }
     isStreamingReasoning = false
-    return "\n</reasoning>"
+    return close
   }
 }
 

@@ -360,6 +360,20 @@ extension ResponseStreamEvent {
     )
   }
 
+  public static func reasoningTextDelta(
+    responseID: UUID, messageID: UUID, delta: String, sequenceNumber: Int? = nil
+  ) -> ResponseStreamEvent {
+    ResponseStreamEvent(
+      type: "response.reasoning_text.delta",
+      responseID: ResponsesAIOutputSpec.responseID(responseID),
+      itemID: ResponsesAIOutputSpec.messageID(messageID),
+      outputIndex: 0,
+      contentIndex: 0,
+      delta: delta,
+      sequenceNumber: sequenceNumber
+    )
+  }
+
   public static func outputTextDone(
     responseID: UUID, messageID: UUID, text: String, sequenceNumber: Int? = nil
   ) -> ResponseStreamEvent {

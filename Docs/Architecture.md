@@ -24,6 +24,8 @@ Serialize lifecycle mutations in the composition owner. Actor isolation protects
 | `session` | LocalSessionPlugin or SessionProviderPlugin |
 | `memory`, `mcp`, `skills` | MemoryProviderPlugin, MCPProviderPlugin, SkillProviderPlugin using host implementations |
 | `agent.completion`, `agent.progress` | AgentCompletionPlugin; each service may be replaced separately |
+| `icordis.transcript-copy` | NeutralTranscriptCopyPlugin, WilliamTranscriptCopyPlugin, or `ServiceProviderPlugin` with `AgentCopyService` |
+| `icordis.reasoning-presentation` | TypedReasoningPresentationPlugin or WilliamReasoningTranscriptPlugin |
 | `agent.continuation` | Optional ContinuationProviderPlugin; defaults to declining further work when user input is required |
 | `context`, `system-prompt`, `observability` | RuntimeCompositionPlugin or individual provider plugins |
 | `permission`, `sandbox` | StandardPermissionPlugin or host policy |

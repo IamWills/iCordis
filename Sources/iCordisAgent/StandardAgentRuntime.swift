@@ -110,6 +110,10 @@ public actor StandardAgentRuntime {
     )
     let continuationService = try await services?.optional(RuntimeServices.continuation) ?? .decline
     let bridgeService = try await services?.optional(RuntimeServices.toolBridge)
+    let copy = try await services?.optional(RuntimeServices.transcriptCopy) ?? .neutral
+    let reasoningPresentation =
+      try await services?.optional(RuntimeServices.reasoningPresentation)?.presentation
+      ?? .typedEvent
     let loop = AgentLoop(
       continuation: continuationService,
       toolBridge: bridgeService,
@@ -133,7 +137,9 @@ public actor StandardAgentRuntime {
       acceptsImageInput: model.modality == .visionLanguage,
       completionGate: AgentCompletionGate(
         registeredAppService: registeredAppService
-      )
+      ),
+      copy: copy,
+      reasoningPresentation: reasoningPresentation
     )
     let traceStore = self.traceStore
 
@@ -189,6 +195,9 @@ public actor StandardAgentRuntime {
           case .textDelta(_, let delta):
             await outputState.observe(delta: delta)
             await responseEmitter.emit(delta: delta)
+          case .reasoningDelta(_, let delta):
+            continuation.yield(.reasoningDelta(messageID: messageID, delta: delta))
+            await responseEmitter.emitReasoning(delta: delta)
           default:
             break
           }
@@ -345,6 +354,11 @@ private actor AgentResponsesEmitter {
     openMessageIfNeeded()
     text += delta
     append(.outputTextDelta(responseID: responseID, messageID: messageID, delta: delta))
+  }
+
+  func emitReasoning(delta: String) {
+    guard !delta.isEmpty else { return }
+    append(.reasoningTextDelta(responseID: responseID, messageID: messageID, delta: delta))
   }
 
   func emit(trace: CapabilityExecutionTrace) {

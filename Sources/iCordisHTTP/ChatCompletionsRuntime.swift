@@ -273,18 +273,11 @@ public enum ChatCompletionsError: Error, LocalizedError, Sendable {
 public struct ChatCompletionsStreamAccumulator {
     public let responseID: UUID
 
-    private var messageID = UUID()
+    public private(set) var messageID = UUID()
     private var didOpenMessage = false
     private var text = ""
-    private var toolCalls: [Int: ToolCallFragment] = [:]
-    private var toolOrder: [Int] = []
+    private var toolCalls = StreamingToolCallAssembler<Int>()
     private var usage: Usage?
-
-    private struct ToolCallFragment {
-        var id: String
-        var name: String
-        var arguments: String
-    }
 
     public init(responseID: UUID) {
         self.responseID = responseID
@@ -312,6 +305,11 @@ public struct ChatCompletionsStreamAccumulator {
             events.append(.outputTextDelta(responseID: responseID, messageID: messageID, delta: content))
         }
 
+        if let reasoning = delta["reasoning_content"]?.stringValue ?? delta["reasoning"]?.stringValue,
+           !reasoning.isEmpty {
+            events.append(.reasoningTextDelta(responseID: responseID, messageID: messageID, delta: reasoning))
+        }
+
         for call in delta["tool_calls"]?.pluginArrayValue ?? [] {
             accumulate(call)
         }
@@ -326,15 +324,14 @@ public struct ChatCompletionsStreamAccumulator {
             events.append(.messageOutputItemDone(responseID: responseID, messageID: messageID, text: text))
         }
         let responseIDString = ResponsesAIOutputSpec.responseID(responseID)
-        for index in toolOrder {
-            guard let fragment = toolCalls[index] else { continue }
+        for (index, fragment) in toolCalls.ordered() {
             let itemID = "fc_\(UUID().uuidString)"
             let item = ResponseStreamEvent.OutputItemPayload(
                 id: itemID,
                 type: "function_call",
                 status: "completed",
                 name: fragment.name,
-                callID: fragment.id.isEmpty ? itemID : fragment.id,
+                callID: fragment.callID.isEmpty ? itemID : fragment.callID,
                 arguments: fragment.arguments.isEmpty ? "{}" : fragment.arguments
             )
             events.append(ResponseStreamEvent(
@@ -358,19 +355,12 @@ public struct ChatCompletionsStreamAccumulator {
     private mutating func accumulate(_ call: JSONValue) {
         guard let object = call.pluginObjectValue else { return }
         let index = Int(object["index"]?.pluginNumberValue ?? 0)
-        if toolCalls[index] == nil {
-            toolCalls[index] = ToolCallFragment(id: "", name: "", arguments: "")
-            toolOrder.append(index)
-        }
-        if let id = object["id"]?.stringValue, !id.isEmpty {
-            toolCalls[index]?.id = id
-        }
+        let id = object["id"]?.stringValue ?? ""
         let function = object["function"]?.pluginObjectValue ?? [:]
-        if let name = function["name"]?.stringValue, !name.isEmpty {
-            toolCalls[index]?.name = name
-        }
-        if let arguments = function["arguments"]?.stringValue, !arguments.isEmpty {
-            toolCalls[index]?.arguments += arguments
+        let name = function["name"]?.stringValue ?? ""
+        toolCalls.register(key: index, name: name, callID: id)
+        if let arguments = function["arguments"]?.stringValue {
+            toolCalls.appendArguments(arguments, key: index, fallbackCallID: id)
         }
     }
 

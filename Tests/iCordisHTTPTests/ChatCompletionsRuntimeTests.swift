@@ -137,6 +137,16 @@ import iCordisHTTP
         #expect(done.last?.type == "response.completed")
     }
 
+    @Test func reasoningContentBecomesReasoningTextDelta() {
+        var acc = ChatCompletionsStreamAccumulator(responseID: UUID())
+        _ = acc.start()
+        let events = acc.consume(.object([
+            "choices": .array([.object(["delta": .object(["reasoning_content": .string("think")])])])
+        ]))
+        #expect(events.contains { $0.type == "response.reasoning_text.delta" && $0.delta == "think" })
+        #expect(events.contains { $0.type == "response.output_text.delta" } == false)
+    }
+
     @Test func usageFromFinalChunkIsCarried() throws {
         var acc = ChatCompletionsStreamAccumulator(responseID: UUID())
         _ = acc.start()

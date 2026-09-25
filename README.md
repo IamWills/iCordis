@@ -95,6 +95,8 @@ try await host.shutdown()
 
 Mount `ToolProviderPlugin` instances to add tools. Use `MemoryProviderPlugin`, `MCPProviderPlugin`, `SkillProviderPlugin`, or `SessionProviderPlugin` with host-owned service closures to add those capabilities. These aliases specialize `ServiceProviderPlugin`; supply the matching key from `RuntimeServices`. `LocalSessionPlugin` additionally offers a repository adapter and append-only event log.
 
+Chain-of-thought is `StreamEvent.reasoningDelta`, kept off the answer channel unless you mount `WilliamReasoningTranscriptPlugin`. Transcript sentences come from `AgentCopyService`; the loop default is product-neutral, and `WilliamTranscriptCopyPlugin` restores the William voice. `StreamingToolCallAssembler` is the shared tool-call fragment assembler.
+
 For reversible replacement, use `kernel.mount(plugin, conflictPolicy: .replace)`. Unmounting reveals the previous provider. Consumers which cache a service must be reloaded to bind a replacement; resolving a service again reads the current provider. Lifecycle mutations should be awaited and serialized by the composition owner.
 
 ## Compatibility and scope
