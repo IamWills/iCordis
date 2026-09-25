@@ -1,6 +1,6 @@
 # iCordis
 
-A Swift plugin kernel and plugin-based Agent SDK extracted from [William](https://github.com/IamWills/William).
+A Swift plugin kernel and plugin-based Agent SDK.
 
 Model providers, agent loops, tool providers, sessions, memory, context, permissions, and completion review remain independently replaceable plugins. The kernel has no dependency on the Agent SDK or an inference engine.
 
