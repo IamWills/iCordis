@@ -114,9 +114,11 @@ public actor StandardAgentRuntime {
     let reasoningPresentation =
       try await services?.optional(RuntimeServices.reasoningPresentation)?.presentation
       ?? .typedEvent
+    let budget = try await services?.optional(RuntimeServices.executionBudget)
     let loop = AgentLoop(
       continuation: continuationService,
       toolBridge: bridgeService,
+      executionBudget: budget,
       configuration: effectiveConfiguration,
       llmClient: llmClient,
       toolExecutor: executor,
