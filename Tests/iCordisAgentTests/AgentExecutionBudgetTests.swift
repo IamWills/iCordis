@@ -35,8 +35,10 @@ final class AgentExecutionBudgetTests: XCTestCase {
     let second = await policy.makeRun(UUID())
     try await first.admitModelTurn()
     try await second.admitModelTurn()
-    XCTAssertEqual((await first.snapshot()).modelTurns, 1)
-    XCTAssertEqual((await second.snapshot()).modelTurns, 1)
+    let firstSnapshot = await first.snapshot()
+    let secondSnapshot = await second.snapshot()
+    XCTAssertEqual(firstSnapshot.modelTurns, 1)
+    XCTAssertEqual(secondSnapshot.modelTurns, 1)
   }
 
   func testZeroBudgetRejectsFirstCall() async {
