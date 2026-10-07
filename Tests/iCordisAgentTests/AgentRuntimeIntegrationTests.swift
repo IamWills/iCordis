@@ -56,6 +56,41 @@ private actor Counter {
     #expect(await host.kernel.services.snapshots().isEmpty)
 }
 
+@Test func executionBudgetExhaustionReturnsIncompleteSummaryWithoutFailingStream() async throws {
+    let model = demoModel()
+    let requests = Counter()
+    let service = ModelService(activeModelID: { model.id }, loadModel: { _ in }, unloadModel: {},
+        generate: { _ in
+            await requests.increment()
+            return AsyncThrowingStream { output in output.finish() }
+        }, cancel: { _ in }, resolveTaskIntent: { _, _, _, task, _ in .newTask(task) })
+    let host = RuntimeHost(preset: Preset(id: "budget-test", name: "Budget Test", plugins: [
+        AgentExecutionBudgetPlugin(maxModelTurns: 0), StandardAgentLoopPlugin(),
+        AgentRequestShaperPlugin(), AgentCompletionPlugin(), DefaultModelProviderPlugin(service: service),
+        ToolRuntimePlugin(), StandardPermissionPlugin()
+    ]))
+    let loop = try await host.service(RuntimeServices.agentLoop)
+    let request = AgentLoopRequest(session: .draft(defaults: .default), task: "Do work", model: model,
+        settings: .default, capabilities: [], memory: .empty, resolvedTaskIntent: .newTask("Do work"))
+    var answer = ""
+    var completionStatus: String?
+    for try await event in try await loop.run(request) {
+        if case .responseEvent(let response) = event, response.type == "response.output_text.delta" {
+            answer += response.delta ?? ""
+        }
+        if case .capabilityInvocation(let trace) = event, trace.request.capabilityID == "agent.run" {
+            #expect(!trace.result.success)
+            if case .object(let payload)? = trace.result.rawPayload {
+                completionStatus = payload["completionStatus"]?.stringValue
+            }
+        }
+    }
+    #expect(completionStatus == "incomplete")
+    #expect(answer.contains("execution budget"))
+    #expect(await requests.count == 0)
+    try await host.shutdown()
+}
+
 @Test func toolProviderUnmountAndAskUserPolicyAreEnforced() async throws {
     let calls = Counter()
     let kernel = Kernel()
