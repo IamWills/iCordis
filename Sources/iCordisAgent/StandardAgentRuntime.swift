@@ -114,9 +114,11 @@ public actor StandardAgentRuntime {
     let reasoningPresentation =
       try await services?.optional(RuntimeServices.reasoningPresentation)?.presentation
       ?? .typedEvent
+    let budget = try await services?.optional(RuntimeServices.executionBudget)
     let loop = AgentLoop(
       continuation: continuationService,
       toolBridge: bridgeService,
+      executionBudget: budget,
       configuration: effectiveConfiguration,
       llmClient: llmClient,
       toolExecutor: executor,
@@ -163,6 +165,7 @@ public actor StandardAgentRuntime {
       backend: "William Agent", detail: "Agent is planning…", progressFraction: nil)
 
     let task = Task {
+      let runStartedAt = Date()
       do {
         let summary = try await loop.run(
           session: session,
@@ -229,6 +232,49 @@ public actor StandardAgentRuntime {
             + "status=\(summary.completionStatus.rawValue) steps=\(summary.steps.count) "
             + "durationMs=\(Int(summary.finishedAt.timeIntervalSince(summary.startedAt) * 1_000))"
         )
+        await responseEmitter.complete(usage: .zero)
+        continuation.finish()
+      } catch let budgetError as AgentExecutionBudgetError {
+        let detail = budgetError.localizedDescription
+        let answer = "The run stopped because its execution budget was reached. \(detail)"
+        let now = Date()
+        var runtimeNote = AgentStep(
+          index: 1,
+          outcome: .runtimeNote,
+          modelOutput: "",
+          observation: "Execution budget reached: \(detail)",
+          startedAt: now
+        )
+        runtimeNote.finishedAt = now
+        var finalStep = AgentStep(
+          index: 2,
+          outcome: .finalAnswer,
+          modelOutput: "",
+          observation: answer,
+          startedAt: now
+        )
+        finalStep.finishedAt = now
+        let summary = AgentRunSummary(
+          sessionID: session.id,
+          task: cleanTask,
+          steps: [runtimeNote, finalStep],
+          finalAnswer: answer,
+          completionStatus: .incomplete,
+          activeInstructionSkillIDs: instructionSkillContext.activeSkillIDs.sorted(),
+          unmetRequirements: [detail],
+          startedAt: runStartedAt,
+          finishedAt: now
+        )
+        RuntimeProgressNotification.post(
+          backend: "William Agent", detail: "Agent stopped at execution budget", progressFraction: 1)
+        AgentLogCategory.capability.info(
+          "agent execution budget exhausted session=\(session.id.uuidString) detail=\(detail)"
+        )
+        let didStreamResolvedAnswer = await outputState.hasEmitted(answer: answer)
+        if didStreamResolvedAnswer == false {
+          await responseEmitter.emit(delta: answer)
+        }
+        continuation.yield(.capabilityInvocation(traceStore.makeSummaryTrace(from: summary)))
         await responseEmitter.complete(usage: .zero)
         continuation.finish()
       } catch is CancellationError {

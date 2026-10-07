@@ -10,6 +10,7 @@ import iCordisKernel
 public struct AgentLoop: Sendable {
   public let continuation: AgentContinuationService
   public let toolBridge: AgentToolBridgeService?
+  public let executionBudget: AgentExecutionBudgetService?
   public let configuration: AgentConfiguration
   public let promptBuilder: AgentPromptBuilder
   public let parser: AgentActionParser
@@ -39,6 +40,7 @@ public struct AgentLoop: Sendable {
   public init(
     continuation: AgentContinuationService = .decline,
     toolBridge: AgentToolBridgeService? = nil,
+    executionBudget: AgentExecutionBudgetService? = nil,
     configuration: AgentConfiguration,
     llmClient: AgentLLMClient,
     toolExecutor: AgentToolExecutor,
@@ -58,6 +60,7 @@ public struct AgentLoop: Sendable {
   ) {
     self.continuation = continuation
     self.toolBridge = toolBridge
+    self.executionBudget = executionBudget
     self.configuration = configuration
     self.promptBuilder = AgentPromptBuilder(
       memoryContext: memoryContext,
@@ -96,6 +99,7 @@ public struct AgentLoop: Sendable {
     let task = taskIntent.objective
     let runID = UUID()
     let startedAt = Date()
+    let budget = await executionBudget?.makeRun(runID)
     var trajectory = AgentTrajectory(
       maxCharacters: configuration.maxScratchpadCharacters,
       acceptsImageInput: acceptsImageInput
@@ -128,6 +132,7 @@ public struct AgentLoop: Sendable {
 
     while true {
       try Task.checkCancellation()
+      try await budget?.admitModelTurn()
       defer { iteration += 1 }
 
       let declaredCatalog = AgentToolCatalog(descriptors: activeToolSet.declaredDescriptors)
@@ -331,6 +336,7 @@ public struct AgentLoop: Sendable {
 
       for request in requests {
         try Task.checkCancellation()
+        try await budget?.admitToolCall()
         try await execute(request, turn: turn)
       }
       let decision = try await semanticDecision(latestOutput: assistantText)

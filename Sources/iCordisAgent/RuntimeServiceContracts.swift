@@ -22,6 +22,7 @@ public enum RuntimeServices {
   public static let modelBackends = ServiceKey<ModelBackendRegistry>(
     ServiceID("william.model-backends"))
   public static let agentLoop = ServiceKey<AgentLoopService>(ServiceID("agent-loop"))
+  public static let executionBudget = ServiceKey<AgentExecutionBudgetService>(ServiceID("william.agent.execution-budget"))
   public static let toolCatalog = ServiceKey<ToolCatalogService>(ServiceID("tools.catalog"))
   public static let toolDiscovery = ServiceKey<ToolDiscoveryService>(ServiceID("tools.discovery"))
   public static let toolRegistry = ServiceKey<ToolRegistryService>(ServiceID("tools.registry"))
